@@ -21,8 +21,14 @@ python -m venv .venv
 .venv/Scripts/pip install -r requirements.txt   # Linux: .venv/bin/pip
 ```
 
-Set at least one key: `GEMINI_API_KEY` (default, ~$0.1 per hour of call) or `OPENAI_API_KEY`.
-With no key it falls back to a local Whisper model (`faster-whisper`, CPU).
+Optional but recommended: a Gemini key, free at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+(~$0.1 per hour of call on a paid plan). Put it into `.env` next to the script:
+
+```
+GEMINI_API_KEY=your-key
+```
+
+`OPENAI_API_KEY` works too. With no key it falls back to a local Whisper model (`faster-whisper`, CPU, offline).
 
 ## Use
 

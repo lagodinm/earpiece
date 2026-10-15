@@ -36,6 +36,16 @@ def log(msg):
     print(f"[{datetime.datetime.now():%H:%M:%S}] {msg}", flush=True)
 
 
+def load_env():
+    """Read KEY=value lines from .env next to this script; real environment variables win."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(path):
+        for line in open(path, encoding="utf-8-sig"):
+            key, sep, value = line.strip().partition("=")
+            if sep and not key.startswith("#"):
+                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def to_wav(audio):
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -48,7 +58,9 @@ def to_wav(audio):
 
 class GeminiEngine:
     def __init__(self, model, lang="en", terms=""):
-        self.key = os.environ.get("GEMINI_API_KEY") or os.environ["GOOGLE_API_KEY"]
+        self.key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if not self.key:
+            raise RuntimeError("GEMINI_API_KEY is not set")
         self.model, self.lang, self.terms = model, lang, terms
         self.name = f"gemini:{model}"
 
@@ -172,9 +184,9 @@ class Transcriber:
         self.out = open(args.out, "a", encoding="utf-8", buffering=1)
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         self.terms = args.terms
-        gemini = (lambda: GeminiEngine(args.gemini_model, args.lang, args.terms))
-        openai = (lambda: OpenAIEngine(args.openai_model, args.lang, args.terms))
-        local = (lambda: LocalEngine(args.local_model, args.threads, args.lang, args.terms))
+        gemini = ("Gemini", lambda: GeminiEngine(args.gemini_model, args.lang, args.terms))
+        openai = ("OpenAI", lambda: OpenAIEngine(args.openai_model, args.lang, args.terms))
+        local = ("local model", lambda: LocalEngine(args.local_model, args.threads, args.lang, args.terms))
         # Engines are tried in order; each is created on first use, so a missing key or model costs nothing.
         self.chain = {"auto": [gemini, openai, local], "gemini": [gemini], "openai": [openai],
                       "local": [local]}[args.engine]
@@ -193,15 +205,22 @@ class Transcriber:
     def _engine(self, i):
         with self.engine_lock:
             if self.engines[i] is None:
-                self.engines[i] = self.chain[i]()
+                name, make = self.chain[i]
+                try:
+                    self.engines[i] = make()
+                except Exception as e:  # no API key or package: skip this engine from now on
+                    self.engines[i] = False
+                    log(f"{name} unavailable ({type(e).__name__}: {str(e)[:80]})")
             return self.engines[i]
 
     def _work(self, label, ts, audio):
         t0 = time.time()
         text = None
         for i in range(len(self.chain)):
+            engine = self._engine(i)
+            if not engine:
+                continue
             try:
-                engine = self._engine(i)
                 text = engine.transcribe(audio)
                 break
             except Exception as e:
@@ -274,6 +293,7 @@ def main():
     p.add_argument("--mic", default="AirPods|Headset|Hands-Free", help="regex of the preferred microphone")
     p.add_argument("--out", default=os.path.join(here, "calls", f"call-{datetime.datetime.now():%Y%m%d-%H%M}.txt"))
     args = p.parse_args()
+    load_env()
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     with open(os.path.join(os.path.dirname(os.path.abspath(args.out)), "LATEST"), "w", encoding="utf-8") as f:
         f.write(os.path.abspath(args.out))

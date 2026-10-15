@@ -15,7 +15,7 @@ import wave
 
 import numpy as np
 
-from earpiece import SR, GeminiEngine, LocalEngine, OpenAIEngine
+from earpiece import SR, GeminiEngine, LocalEngine, OpenAIEngine, load_env
 
 FACTORIES = {
     "gemini:gemini-3.1-flash-lite": lambda: GeminiEngine("gemini-3.1-flash-lite"),
@@ -49,6 +49,7 @@ def cer(ref, hyp):
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    load_env()
     samples = os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples")
     files = sorted(glob.glob(os.path.join(samples, "*.wav")))
     refs = open(os.path.join(samples, "references.txt"), encoding="utf-8").read().splitlines()
